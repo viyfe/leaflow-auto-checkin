@@ -118,8 +118,8 @@ class LeaflowAutoCheckin:
 
     def checkin(self):
         # 1. 先去启动台 (Launchpad)
-        logger.info("前往启动台寻找入口...")
-        self.driver.get("https://leaflow.net/launchpad")
+        logger.info("前往工作区寻找入口...")
+        self.driver.get("https://leaflow.net/workspaces")
         time.sleep(8)
         
         if "Just a moment" in self.driver.title:
@@ -307,3 +307,4 @@ class MultiAccountManager:
 
 if __name__ == "__main__":
     MultiAccountManager().run_all()
+
