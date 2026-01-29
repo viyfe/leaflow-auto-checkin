@@ -228,7 +228,7 @@ class LeaflowAutoCheckin:
             logger.info("获取账号余额...")
             
             # 跳转到仪表板页面
-            self.driver.get("https://leaflow.net/launchpad")
+            self.driver.get("https://leaflow.net/dashboard")
             time.sleep(3)
             
             # 等待页面加载
@@ -366,45 +366,30 @@ class LeaflowAutoCheckin:
             return False
     
     def checkin(self):
-        """执行签到流程 - 优化版"""
-        logger.info("准备访问签到页面...")
+        """执行签到流程"""
+        logger.info("跳转到签到页面...")
         
-        # 直接访问签到页面（比从启动台点过来更稳定）
-        target_url = "https://checkin.leaflow.net"
-        self.driver.get(target_url)
+        # 跳转到签到页面
+        self.driver.get("https://checkin.leaflow.net")
         
-        # 增加一个强制等待，让页面充分加载（GitHub Actions有时渲染慢）
-        time.sleep(5)
+        # 等待签到页面加载（最多重试3次，每次等待20秒）
+        if not self.wait_for_checkin_page_loaded(max_retries=3, wait_time=20):
+            raise Exception("签到页面加载失败，无法找到签到相关元素")
         
-        # 打印当前标题，帮助调试（如果是 Just a moment... 说明被墙了）
-        logger.info(f"当前页面标题: {self.driver.title}")
-
-        # 尝试查找并点击“立即签到”按钮
-        # 我们使用更宽容的重试机制
-        try:
-             # 如果页面没有包含签到按钮，尝试等待一下加载
-            if not self.wait_for_checkin_page_loaded(max_retries=3, wait_time=15):
-                # 如果找不到按钮，打印一下页面源码的前500个字符，看看发生了什么
-                page_source_preview = self.driver.page_source[:500]
-                logger.warning(f"未找到签到元素。页面源码预览: {page_source_preview}")
-                # 检查是否是被 Cloudflare 拦截
-                if "Just a moment" in self.driver.title or "Cloudflare" in self.driver.page_source:
-                    return "失败: 遭遇 Cloudflare 验证，无法自动签到"
-                
-            checkin_result = self.find_and_click_checkin_button()
+        # 查找并点击立即签到按钮
+        checkin_result = self.find_and_click_checkin_button()
+        
+        if checkin_result == "already_checked_in":
+            return "今日已签到"
+        elif checkin_result is True:
+            logger.info("已点击立即签到按钮")
+            time.sleep(5)  # 等待签到结果
             
-            if checkin_result == "already_checked_in":
-                return "今日已签到"
-            elif checkin_result is True:
-                logger.info("已点击立即签到按钮")
-                time.sleep(5)  # 等待签到结果提示
-                result_message = self.get_checkin_result()
-                return result_message
-            else:
-                return "未找到签到按钮(可能已签到或加载失败)"
-                
-        except Exception as e:
-            return f"签到过程发生异常: {str(e)}"
+            # 获取签到结果
+            result_message = self.get_checkin_result()
+            return result_message
+        else:
+            raise Exception("找不到立即签到按钮或按钮不可点击")
     
     def get_checkin_result(self):
         """获取签到结果消息"""
@@ -609,20 +594,17 @@ class MultiAccountManager:
         results = []
         
         for i, account in enumerate(self.accounts, 1):
-            logger.info(f"=== 正在处理第 {i}/{len(self.accounts)} 个账号: {account['email'][:3]}*** ===")
+            logger.info(f"处理第 {i}/{len(self.accounts)} 个账号")
             
             try:
                 auto_checkin = LeaflowAutoCheckin(account['email'], account['password'])
                 success, result, balance = auto_checkin.run()
                 results.append((account['email'], success, result, balance))
                 
-                # --- 这里是关键修改 ---
-                # 在账号之间添加更长的随机间隔，避免被识别为机器人
+                # 在账号之间添加间隔，避免请求过于频繁
                 if i < len(self.accounts):
-                    import random
-                    # 随机等待 15 到 30 秒
-                    wait_time = random.randint(15, 30)
-                    logger.info(f"⏳ 为避免频繁请求，等待 {wait_time} 秒后处理下一个账号...")
+                    wait_time = 5
+                    logger.info(f"等待{wait_time}秒后处理下一个账号...")
                     time.sleep(wait_time)
                     
             except Exception as e:
@@ -658,5 +640,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
